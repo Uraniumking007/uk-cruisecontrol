@@ -98,6 +98,25 @@ local function startSpeedLimiterForVehicle(veh, maxSpeedMps)
   end)
 end
 
+local toggleCommand = (Config and Config.ToggleCommand) or 'toggleCruiseControl'
+
+RegisterCommand(toggleCommand, function()
+  if speedLimiterEnabled then
+    disableSpeedLimiter()
+    return
+  end
+
+  local ped = PlayerPedId()
+  if not IsPedInAnyVehicle(ped, false) then return end
+
+  local veh = GetVehiclePedIsIn(ped, false)
+  if GetPedInVehicleSeat(veh, -1) ~= ped then return end
+
+  startSpeedLimiterForVehicle(veh, GetEntitySpeed(veh))
+end, false)
+
+RegisterKeyMapping(toggleCommand, 'Toggle cruise control', 'keyboard', (Config and Config.ToggleKey) or 'Y')
+
 -- NUI -> client: set cruise settings (payload: { enabled, speed, limitEnabled, limitSpeed })
 RegisterNUICallback('setCruiseSettings', function(data, cb)
   -- data comes from the React UI; expected numbers are in same units as UI (mph)

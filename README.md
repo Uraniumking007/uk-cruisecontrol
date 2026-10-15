@@ -40,6 +40,7 @@ The resource ships with a prebuilt UI under `web/build`, so no build is required
 
 ## Usage
 
+- Press **Y** while driving to enable the limiter at your current speed; press again to disable it. Rebind **Toggle cruise control** in FiveM key bindings if desired.
 - In-game, type the configured command (default `cc`) in chat or console to open the UI.
 - Toggle **Enabled** and set your desired speed using the slider, buttons, or number input.
 - Switch units between MPH and KM/H; values are converted appropriately.
