@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import "./App.css";
 import { debugData } from "../utils/debugData";
+import { useNuiEvent } from "../hooks/useNuiEvent";
 import { fetchNui } from "../utils/fetchNui";
 
 // This will set the NUI to visible if we are
@@ -34,48 +35,56 @@ interface ReturnData {
 }
 
 const App: React.FC = () => {
+  const [ready, setReady] = useState(false);
+  const skipEnabledApply = useRef(false);
+  const enabledRef = useRef(false);
+  useNuiEvent<boolean>('setCruiseEnabled', (value) => {
+    if (enabledRef.current !== value) {
+      skipEnabledApply.current = true;
+      enabledRef.current = value;
+      setEnabled(value);
+    }
+  });
   // Cruise settings state
   const [enabled, setEnabled] = useState(false);
   const [speed, setSpeed] = useState(60); // will be adjusted to config bounds
   const [limitEnabled, setLimitEnabled] = useState(false);
   const [limitSpeed, setLimitSpeed] = useState(120);
   const [unit, setUnit] = useState<'mph' | 'kmh'>('mph');
-  const [minSpeed, setMinSpeed] = useState<number>(0);
-  const [maxSpeed, setMaxSpeed] = useState<number>(300);
+  const [minSpeedMph, setMinSpeed] = useState<number>(0);
+  const [maxSpeedMph, setMaxSpeed] = useState<number>(300);
 
-  const toMph = (value: number) => unit === 'mph' ? value : Math.round(value * 0.621371);
-  const fromMph = (value: number) => unit === 'mph' ? value : Math.round(value / 0.621371);
+  const toMph = (value: number) => unit === 'mph' ? value : value / 1.609344;
+  const fromMph = (value: number) => unit === 'mph' ? value : value * 1.609344;
+  const minSpeed = fromMph(minSpeedMph);
+  const maxSpeed = fromMph(maxSpeedMph);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   // Fetch config (unit/min/max) from client once
   useEffect(() => {
     (async () => {
       try {
-        const cfg = await fetchNui<{ unit: 'mph' | 'kmh'; minSpeed: number; maxSpeed: number }>(
+        const cfg = await fetchNui<{ unit: 'mph' | 'kmh'; minSpeed: number; maxSpeed: number; boundsUnit?: 'mph' | 'kmh'; speed?: number; limitSpeed?: number; limitEnabled?: boolean; enabled?: boolean }>(
           'getCruiseConfig',
           {},
           { unit: 'mph', minSpeed: 0, maxSpeed: 300 }
         );
-        setMinSpeed(cfg.minSpeed ?? 0);
-        setMaxSpeed(cfg.maxSpeed ?? 300);
-        // convert existing values if unit changes from default
-        if (cfg.unit && cfg.unit !== unit) {
-          if (cfg.unit === 'kmh' && unit === 'mph') {
-            const toKmh = (v: number) => Math.round(v / 0.621371);
-            setSpeed((s) => toKmh(s));
-            setLimitSpeed((s) => toKmh(s));
-          } else if (cfg.unit === 'mph' && unit === 'kmh') {
-            const toMphLocal = (v: number) => Math.round(v * 0.621371);
-            setSpeed((s) => toMphLocal(s));
-            setLimitSpeed((s) => toMphLocal(s));
-          }
-          setUnit(cfg.unit);
-        }
-        // clamp existing values into new bounds
-        setSpeed((s) => Math.min(Math.max(cfg.minSpeed ?? 0, s), cfg.maxSpeed ?? 300));
-        setLimitSpeed((s) => Math.min(Math.max(cfg.minSpeed ?? 0, s), cfg.maxSpeed ?? 300));
+        const boundsToMph = (v: number) => cfg.boundsUnit === 'kmh' ? v / 1.609344 : v;
+        const minimum = boundsToMph(cfg.minSpeed ?? 0);
+        const maximum = boundsToMph(cfg.maxSpeed ?? 300);
+        setMinSpeed(minimum);
+        setMaxSpeed(maximum);
+        const display = (mph: number) => cfg.unit === 'kmh' ? mph * 1.609344 : mph;
+        const clamp = (value: number) => Math.min(Math.max(display(minimum), value), display(maximum));
+        setUnit(cfg.unit);
+        setSpeed(clamp(display(cfg.speed ?? 60)));
+        setLimitSpeed(clamp(display(cfg.limitSpeed ?? 120)));
+        setLimitEnabled(cfg.limitEnabled ?? false);
+        enabledRef.current = cfg.enabled ?? false;
+        setEnabled(enabledRef.current);
+        setReady(true);
       } catch (e) {
-        // ignore; defaults will be used in browser
+        setReady(true);
       }
     })();
   }, []);
@@ -83,8 +92,8 @@ const App: React.FC = () => {
   // Basic validation and apply
   const handleApply = async () => {
     // clamp values to sensible ranges
-    const clampedSpeed = Math.max(minSpeed, Math.min(maxSpeed, Math.round(Number(speed))));
-    const clampedLimit = Math.max(minSpeed, Math.min(maxSpeed, Math.round(Number(limitSpeed))));
+    const clampedSpeed = Math.max(minSpeed, Math.min(maxSpeed, Number(speed)));
+    const clampedLimit = Math.max(minSpeed, Math.min(maxSpeed, Number(limitSpeed)));
 
     // Lua expects MPH; convert if UI is KM/H
     const payload = {
@@ -96,7 +105,18 @@ const App: React.FC = () => {
     } as const;
 
     try {
-      await fetchNui("setCruiseSettings", payload, { ok: true });
+      const result = await fetchNui<{ ok: boolean; enabled?: boolean; error?: string }>(
+        "setCruiseSettings", payload, { ok: true, enabled }
+      );
+      if (typeof result.enabled === 'boolean' && result.enabled !== enabledRef.current) {
+        skipEnabledApply.current = true;
+        enabledRef.current = result.enabled;
+        setEnabled(result.enabled);
+      }
+      if (!result.ok) {
+        setStatusMessage(result.error || "Failed to apply settings");
+        return;
+      }
       setStatusMessage("Settings applied");
       // clear status after a short timeout
       setTimeout(() => setStatusMessage(null), 2000);
@@ -115,6 +135,8 @@ const App: React.FC = () => {
   // Debounce apply so we always send fresh state and avoid spamming NUI
   const applyTimeoutRef = useRef<number | null>(null);
   useEffect(() => {
+    if (!ready) return;
+    if (skipEnabledApply.current) { skipEnabledApply.current = false; return; }
     if (applyTimeoutRef.current) {
       clearTimeout(applyTimeoutRef.current);
     }
@@ -126,7 +148,7 @@ const App: React.FC = () => {
         clearTimeout(applyTimeoutRef.current);
       }
     };
-  }, [enabled, speed, limitEnabled, limitSpeed, unit]);
+  }, [enabled, speed, limitEnabled, limitSpeed, unit, ready]);
 
   return (
     <div className="nui-wrapper">
@@ -157,7 +179,7 @@ const App: React.FC = () => {
                   onClick={() => {
                     if (unit !== 'kmh') {
                       // convert current values to km/h for display
-                      const toKmh = (v: number) => Math.round(v / 0.621371);
+                      const toKmh = (v: number) => v * 1.609344;
                       setUnit('kmh');
                       setSpeed((s) => toKmh(s));
                       setLimitSpeed((s) => toKmh(s));
@@ -176,6 +198,7 @@ const App: React.FC = () => {
                   type="checkbox"
                   checked={enabled}
                   onChange={(e) => {
+                    enabledRef.current = e.target.checked;
                     setEnabled(e.target.checked);
                   }}
                 />
@@ -188,7 +211,7 @@ const App: React.FC = () => {
             <div className="row header-row">
               <span className="label">Target Speed</span>
               <div className="speed-display" aria-live="polite">
-                <span className="speed-value">{speed}</span>
+                <span className="speed-value">{Number(speed.toFixed(2))}</span>
                 <span className="speed-unit">{unit === 'mph' ? 'mph' : 'km/h'}</span>
               </div>
             </div>
@@ -208,7 +231,7 @@ const App: React.FC = () => {
                   type="range"
                   min={minSpeed}
                   max={maxSpeed}
-                  value={speed}
+                  value={Number(speed.toFixed(4))}
                   onChange={(e) => setSpeed(Number(e.target.value))}
                 />
                 <button
@@ -225,7 +248,7 @@ const App: React.FC = () => {
                   type="number"
                   min={minSpeed}
                   max={maxSpeed}
-                  value={speed}
+                  value={Number(speed.toFixed(4))}
                   onChange={(e) => {
                     setSpeed(Number(e.target.value));
                   }}

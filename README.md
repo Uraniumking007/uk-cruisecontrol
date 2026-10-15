@@ -40,7 +40,8 @@ The resource ships with a prebuilt UI under `web/build`, so no build is required
 
 ## Usage
 
-- Press **Y** while driving to enable the limiter at your current speed; press again to disable it. Rebind **Toggle cruise control** in FiveM key bindings if desired.
+- Press **Y** while driving to enable the limiter at the speed selected in the NUI (default 60 MPH); press again to disable it. Rebind **Toggle cruise control** in FiveM key bindings if desired.
+- The Enabled toggle follows Y and automatic cancellation. Speed and unit preferences are saved per FiveM client across server restarts; cruise starts disabled after reconnecting.
 - In-game, type the configured command (default `cc`) in chat or console to open the UI.
 - Toggle **Enabled** and set your desired speed using the slider, buttons, or number input.
 - Switch units between MPH and KM/H; values are converted appropriately.
@@ -48,7 +49,7 @@ The resource ships with a prebuilt UI under `web/build`, so no build is required
 
 ### Cancel/disable conditions
 
-- Pressing the configured handbrake control (default control code `73`)
+- Pressing the configured handbrake control (default control code `76`)
 - Exiting the current vehicle
 - Switching to another vehicle
 - Manually disabling via the UI
@@ -64,7 +65,7 @@ Config.DebugModeConvar = 'uk-cruisecontrol-debugMode' -- convar name (1 to enabl
 
 -- Controls
 Config.DisableOnHandbrake = true          -- disable limiter when handbrake pressed
-Config.HandbrakeControl = 73              -- control code to detect handbrake/cancel
+Config.HandbrakeControl = 76              -- control code to detect handbrake/cancel
 
 -- Units
 Config.Unit = 'mph'                       -- 'mph' or 'kmh' for UI and inputs

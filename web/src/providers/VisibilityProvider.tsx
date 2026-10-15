@@ -31,7 +31,11 @@ export const VisibilityProvider: React.FC<{ children: React.ReactNode }> = ({
     if (!visible) return;
 
     const keyHandler = (e: KeyboardEvent) => {
-      if (["Backspace", "Escape"].includes(e.code)) {
+      const target = e.target;
+      const editing = target instanceof HTMLElement &&
+        (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName));
+      if (e.code === 'Escape' || (e.code === 'Backspace' && !editing)) {
+        e.preventDefault();
         if (!isEnvBrowser()) fetchNui("hideFrame");
         else setVisible(!visible);
       }

@@ -14,6 +14,9 @@ games {
 
 ui_page 'web/build/index.html'
 
+shared_script '@ox_lib/init.lua'
+dependency 'ox_lib'
+
 client_scripts {
   'client/config.lua',
   'client/utils.lua',
